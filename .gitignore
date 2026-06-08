@@ -1,0 +1,15 @@
+# Local secrets — NEVER commit your API key
+config.local.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Scratch / outputs (these never belong in the repo)
+work/
+*_translated/
+
+# OS
+.DS_Store
+Thumbs.db
