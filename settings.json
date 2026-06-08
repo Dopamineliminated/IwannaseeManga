@@ -1,0 +1,25 @@
+{
+  "model": "claude-sonnet-4-6",
+  "source": "日本語",
+  "target": "한국어",
+  "style": null,
+
+  "typeset": {
+    "font_family": "Jua",
+    "font_size": 24,
+    "auto_fit": true,
+    "bold": false,
+    "italic": false,
+    "line_spacing": 1.2,
+    "letter_spacing": 1.0,
+    "stroke_width": 0.0,
+    "stroke_color": [255, 255, 255],
+    "text_color": null,
+    "alignment": "auto"
+  },
+
+  "cleanup": {
+    "inpaint_size": 1536,
+    "mask_dilate": 2
+  }
+}
