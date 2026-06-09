@@ -37,19 +37,35 @@ inpainted layers, and run logs, are all deleted after export.
 - **Python 3.8+** to run this wrapper (any interpreter; standard library only).
 - An **Anthropic API key**.
 
-> If you hit blank translations, BallonsTranslator's `ChatGPT` translator is
-> sending both `temperature` and `top_p`, which Anthropic rejects. Patch
-> `ballontranslator/modules/translators/trans_chatgpt.py` to send at most
-> `temperature` (and neither for Opus models). Being contributed upstream.
+> **BallonsTranslator compatibility patches — applied automatically.** Two upstream
+> behaviours break headless use through Anthropic, so IwannaseeManga patches your
+> BallonsTranslator checkout for you:
+> 1. its `ChatGPT` translator sends both `temperature` and `top_p` — Anthropic's
+>    endpoint rejects that combination, and Opus models reject both, so you get
+>    **blank translations**; and
+> 2. its headless loop blocks on `input()` at the end of a batch, so **the run never
+>    exits** (a piped `exit` can even carry a UTF-8 BOM that hides it).
+>
+> The patches are applied automatically the first time you translate — or run
+> `python iwannaseemanga.py --patch-bt` to apply them explicitly. They are minimal,
+> idempotent, and being contributed upstream; revert any time with
+> `git -C <BallonsTranslator> checkout -- <file>`.
 
 ## Setup
 
 ```sh
 git clone https://github.com/Dopamineliminated/IwannaseeManga.git
 cd IwannaseeManga
-cp config.local.json.example config.local.json   # then paste your Anthropic key
-python iwannaseemanga.py --setup-fonts            # download the recommended free Korean fonts
+
+# copy the example, then paste your Anthropic key into config.local.json:
+cp config.local.json.example config.local.json    # Windows: copy config.local.json.example config.local.json
+
+python iwannaseemanga.py --setup-fonts             # download the recommended free Korean fonts
+python iwannaseemanga.py --patch-bt                # make BallonsTranslator work headlessly with Anthropic
 ```
+
+The `--patch-bt` step is also run automatically the first time you translate, so it's
+safe to skip — it's listed here just so the behaviour is explicit.
 
 If BallonsTranslator is **not** at `~/BallonsTranslator`, set `IWSM_BT_DIR` to its
 path (or pass `--bt-dir`). API key can also come from `ANTHROPIC_API_KEY` or the
@@ -83,6 +99,7 @@ On Windows you can also drag a folder onto **`run.bat`**.
 | `--source`/`--target` | `日本語`/`한국어` | languages (BallonsTranslator names) |
 | `--setup-fonts` | — | download the recommended free fonts, then exit |
 | `--list-fonts` | — | list installed fonts + presets, then exit |
+| `--patch-bt` | — | apply the BallonsTranslator compatibility patches, then exit (auto-applied on first run) |
 | `--bt-dir` / `--api-key` | env / fallback | BallonsTranslator path / Anthropic key |
 | `--keep-intermediate` | off | keep scratch & logs (debugging) |
 

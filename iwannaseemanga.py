@@ -269,8 +269,13 @@ def run_headless(bt_dir: Path, py: Path, proj_dir: Path, cfg_path: Path, log_pat
     cmd = [str(py), "-m", "ballontranslator", "--headless",
            "--exec_dirs", str(proj_dir), "--config_path", str(cfg_path)]
     log("running BallonsTranslator headlessly... (this can take a while on CPU)")
+    # stdin=DEVNULL: BallonsTranslator's headless loop calls input() once the batch
+    # is done; with no stdin it gets EOF and (with our ensure_bt_patched fix) exits
+    # cleanly. This is why a direct `python iwannaseemanga.py ...` no longer hangs —
+    # the run.bat "echo exit" trick is no longer needed.
     with open(log_path, "wb") as logf:
-        return subprocess.run(cmd, cwd=str(bt_dir), stdout=logf, stderr=subprocess.STDOUT).returncode
+        return subprocess.run(cmd, cwd=str(bt_dir), stdin=subprocess.DEVNULL,
+                              stdout=logf, stderr=subprocess.STDOUT).returncode
 
 
 def tail(path: Path, n: int = 25) -> str:
@@ -329,6 +334,101 @@ def list_fonts(bt_dir: Path) -> int:
     return 0
 
 
+# --- BallonsTranslator compatibility patches --------------------------------
+# IwannaseeManga drives BallonsTranslator headlessly against Anthropic's API.
+# Two upstream behaviours break that out of the box, so we patch the user's BT
+# checkout idempotently (on first run, or via --patch-bt) to make a fresh install
+# "just work":
+#   1. trans_chatgpt.py sends both `temperature` and `top_p`. Anthropic's
+#      OpenAI-compatible endpoint rejects that combination, and Opus models reject
+#      both -> the API errors out and you get blank translations.
+#   2. mainwindow.py blocks on input() at the end of a headless batch, so the run
+#      never exits; and a piped "exit" can carry a UTF-8 BOM that hides it.
+# Both edits are minimal and being contributed upstream. Revert any time with:
+#   git -C <BallonsTranslator> checkout -- <file>
+BT_PATCHES = [
+    {
+        "name": "trans_chatgpt.py: don't send temperature+top_p to Anthropic",
+        "relpath": "ballontranslator/modules/translators/trans_chatgpt.py",
+        "marker": "Anthropic's OpenAI-compatible endpoint rejects",
+        "old": (
+            "        func_args = {\n"
+            "            'model': model,\n"
+            "            'messages': messages,\n"
+            "            'temperature': self.temperature,\n"
+            "            'top_p': self.top_p,\n"
+            "        }\n"
+        ),
+        "new": (
+            "        func_args = {\n"
+            "            'model': model,\n"
+            "            'messages': messages,\n"
+            "        }\n"
+            "        # Anthropic's OpenAI-compatible endpoint rejects sending temperature and top_p\n"
+            "        # together, and Opus models reject both; send at most temperature for non-Opus.\n"
+            "        if 'opus' not in model.lower():\n"
+            "            func_args['temperature'] = self.temperature\n"
+        ),
+    },
+    {
+        "name": "mainwindow.py: exit headless run on EOF / BOM-prefixed 'exit'",
+        "relpath": "ballontranslator/ui/mainwindow.py",
+        "marker": "Non-interactive/headless automation",
+        "old": (
+            "            new_exec_dirs = input()\n"
+            "            if new_exec_dirs.strip().lower() == 'exit':\n"
+        ),
+        "new": (
+            "            try:\n"
+            "                new_exec_dirs = input()\n"
+            "            except EOFError:\n"
+            "                # Non-interactive/headless automation: no stdin -> exit cleanly (code 0).\n"
+            "                new_exec_dirs = 'exit'\n"
+            "            # Strip a possible UTF-8 BOM so a piped \"exit\" is recognised.\n"
+            "            if new_exec_dirs.strip().lstrip('\\ufeff').lower() == 'exit':\n"
+        ),
+    },
+]
+
+
+def ensure_bt_patched(bt_dir: Path, verbose: bool = False):
+    """Apply the BallonsTranslator compatibility patches in place, idempotently.
+
+    Returns (applied, already, problems) lists of human-readable names. Never
+    raises on version drift: if the expected code isn't found, it records a
+    problem and leaves the file untouched (README documents the manual fix).
+    File newlines are preserved so we don't churn the whole file.
+    """
+    applied, already, problems = [], [], []
+    for p in BT_PATCHES:
+        target = bt_dir / p["relpath"]
+        if not target.exists():
+            problems.append(f"{p['name']} — file not found: {target}")
+            continue
+        with open(target, "r", encoding="utf-8", newline="") as f:
+            raw = f.read()
+        norm = raw.replace("\r\n", "\n")
+        if p["marker"] in norm:
+            already.append(p["name"])
+            continue
+        if p["old"] not in norm:
+            problems.append(f"{p['name']} — expected code not found (BallonsTranslator version changed?)")
+            continue
+        nl = "\r\n" if "\r\n" in raw else "\n"
+        patched = norm.replace(p["old"], p["new"], 1).replace("\n", nl)
+        with open(target, "w", encoding="utf-8", newline="") as f:
+            f.write(patched)
+        applied.append(p["name"])
+    if verbose:
+        for n in applied:
+            log(f"patched: {n}")
+        for n in already:
+            log(f"already patched: {n}")
+    for w in problems:
+        log(f"warning: could not patch — {w}")
+    return applied, already, problems
+
+
 def main(argv=None) -> int:
     # Console may be cp949/cp1252; force UTF-8 so Korean paths, emoji, dashes never crash a print.
     for _stream in (sys.stdout, sys.stderr):
@@ -363,10 +463,19 @@ def main(argv=None) -> int:
     ap.add_argument("--keep-intermediate", action="store_true", help="do NOT wipe scratch/logs (debug)")
     ap.add_argument("--setup-fonts", action="store_true", help="download the recommended free fonts, then exit")
     ap.add_argument("--list-fonts", action="store_true", help="list installed fonts + presets, then exit")
+    ap.add_argument("--patch-bt", action="store_true",
+                    help="apply BallonsTranslator compatibility patches, then exit (also done automatically on first run)")
     args = ap.parse_args(argv)
 
     bt_dir = find_bt_dir(args.bt_dir)
 
+    if args.patch_bt:
+        applied, already, problems = ensure_bt_patched(bt_dir, verbose=True)
+        if not applied and not already:
+            return 1  # nothing was patched and nothing was already in place (warnings printed)
+        log("BallonsTranslator already up to date." if not applied
+            else f"done: applied {len(applied)} patch(es).")
+        return 0 if not problems else 1
     if args.setup_fonts:
         return setup_fonts(bt_dir)
     if args.list_fonts:
@@ -399,6 +508,9 @@ def main(argv=None) -> int:
         else input_dir.with_name(input_dir.name + "_translated")
 
     py = bt_python(bt_dir)
+    applied, _already, _problems = ensure_bt_patched(bt_dir)
+    if applied:
+        log(f"applied {len(applied)} BallonsTranslator compatibility patch(es) (one-time setup).")
     api_key = resolve_api_key(args.api_key, bt_dir)
     if not api_key:
         fail("no Anthropic API key. Use --api-key, set ANTHROPIC_API_KEY, or add config.local.json.")
