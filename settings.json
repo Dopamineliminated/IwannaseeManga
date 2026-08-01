@@ -1,6 +1,6 @@
 {
   "model": "claude-sonnet-4-6",
-  "source": "日本語",
+  "language": "Japanese",
   "target": "한국어",
   "style": null,
 

@@ -1,6 +1,9 @@
 # Local secrets — NEVER commit your API key
 config.local.json
 
+# Remembered BallonsTranslator location (per-machine; auto-detected)
+.bt_dir
+
 # Python
 __pycache__/
 *.pyc

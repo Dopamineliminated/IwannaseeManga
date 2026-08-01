@@ -1,0 +1,3 @@
+# Windows batch files must use CRLF, or cmd.exe misparses them
+# (e.g. `chcp`/`REM` get split into bogus `cp`/`M` commands).
+*.bat text eol=crlf

@@ -1,18 +1,29 @@
 # IwannaseeManga
 
-**One command in, translated manga out.** Point it at a folder of Japanese manga
-images and get a folder of Korean ones back — font, sizing, outline, and erased
-original text all handled from one place. Then it wipes every intermediate trace,
-leaving **only the finished images**.
+**Pick a folder, click Translate, get Korean pages back.** Point it at a folder of
+comic/manga images — **Japanese or English** — and get a folder of **Korean** ones
+back: font, sizing, outline, and erased original text all handled from one place.
+Then it wipes every intermediate trace, leaving **only the finished images**.
+
+Run it and a small window opens: choose the **folder**, the **save location**, the
+**translation model** (Sonnet / Opus / Haiku) and the **language** (일본어→한국어 or
+영어→한국어), then hit **번역 시작**. Picking the language also selects the right OCR
+engine automatically — Japanese uses `manga_ocr`, English uses the Latin-capable
+`mit48px_ctc`. Prefer the terminal? Everything is available on the command line too.
 
 IwannaseeManga is a thin automation layer around
 [BallonsTranslator](https://github.com/dmMaze/BallonsTranslator), which does the
 heavy lifting (text detection, OCR, inpainting, typesetting). The translation
 itself runs through the **Claude API** (Anthropic's OpenAI-compatible endpoint).
 
-> **한국어 — 한 번의 명령으로 만화 번역 완료.** 일본어 만화 이미지가 든 폴더를
-> 가리키면 한국어로 번역된 폴더가 나옵니다 — 폰트, 크기, 외곽선, 원본 글자 지우기까지
-> 한곳에서 처리합니다. 그리고 모든 중간 흔적을 지우고 **완성된 이미지만** 남깁니다.
+> **한국어 — 폴더 고르고 버튼 한 번, 한국어로 번역.** **일본어 또는 영어** 만화/이미지가
+> 든 폴더를 가리키면 한국어로 번역된 폴더가 나옵니다 — 폰트, 크기, 외곽선, 원본 글자
+> 지우기까지 한곳에서 처리하고, 모든 중간 흔적을 지운 뒤 **완성된 이미지만** 남깁니다.
+>
+> 실행하면 작은 창이 열립니다: **폴더**, **저장 위치**, **번역 모델**(Sonnet / Opus /
+> Haiku), **언어**(일본어→한국어 또는 영어→한국어)를 고르고 **번역 시작**을 누르면
+> 됩니다. 언어를 고르면 OCR 엔진도 자동으로 맞춰집니다 — 일본어는 `manga_ocr`, 영어는
+> 라틴 문자용 `mit48px_ctc`. 터미널을 선호하면 명령줄로도 모두 가능합니다.
 >
 > IwannaseeManga는 [BallonsTranslator](https://github.com/dmMaze/BallonsTranslator)를
 > 감싸는 얇은 자동화 레이어입니다. 무거운 작업(텍스트 감지, OCR, 인페인팅, 식자)은
@@ -21,7 +32,7 @@ itself runs through the **Claude API** (Anthropic's OpenAI-compatible endpoint).
 
 ```
 [ input folder ]
-      │   jpg / png / webp …
+      │   jpg / png / webp …  (Japanese OR English text)
       ▼
 IwannaseeManga ──► copy to a private scratch project (outside any cloud folder)
       │            build a runtime config (translation + all post-processing options)
@@ -85,15 +96,24 @@ knowing before you use it:
 
 ## Requirements
 
-- **BallonsTranslator**, installed with its virtual environment (this tool calls its `venv` interpreter).
-- **Python 3.8+** to run this wrapper (any interpreter; standard library only).
+- **BallonsTranslator**, installed with its virtual environment (this tool calls its `venv` interpreter). Auto-detected.
+- **Python 3.8+** to run this wrapper (any interpreter; standard library only — `tkinter`, which ships with Python on Windows, powers the window).
 - An **Anthropic API key**.
+
+Japanese uses the built-in `manga_ocr`; English uses `mit48px_ctc`, a general
+(Latin-capable) model from the manga-image-translator project. BallonsTranslator
+auto-downloads whichever it needs on first use. Override with `--ocr` / `settings.json`.
 
 > **한국어 — 요구 사항.**
 > - **BallonsTranslator** — 가상 환경과 함께 설치되어 있어야 합니다(이 도구가 그
->   `venv` 인터프리터를 호출합니다).
-> - 이 래퍼를 실행할 **Python 3.8 이상**(아무 인터프리터나 가능; 표준 라이브러리만 사용).
+>   `venv` 인터프리터를 호출합니다). 위치는 자동으로 찾습니다.
+> - 이 래퍼를 실행할 **Python 3.8 이상**(아무 인터프리터나 가능; 표준 라이브러리만 사용 —
+>   창은 Windows 파이썬에 기본 포함된 `tkinter`로 동작합니다).
 > - **Anthropic API 키**.
+>
+> 일본어는 내장 `manga_ocr`, 영어는 라틴 문자용 `mit48px_ctc`(manga-image-translator
+> 프로젝트) 엔진을 사용하며, 필요한 모델은 BallonsTranslator가 처음 실행 시 자동으로
+> 내려받습니다. `--ocr` / `settings.json`으로 바꿀 수 있습니다.
 
 > **BallonsTranslator compatibility patches — applied automatically.** Two upstream
 > behaviours break headless use through Anthropic, so IwannaseeManga patches your
@@ -139,9 +159,10 @@ python iwannaseemanga.py --patch-bt                # make BallonsTranslator work
 The `--patch-bt` step is also run automatically the first time you translate, so it's
 safe to skip — it's listed here just so the behaviour is explicit.
 
-If BallonsTranslator is **not** at `~/BallonsTranslator`, set `IWSM_BT_DIR` to its
-path (or pass `--bt-dir`). API key can also come from `ANTHROPIC_API_KEY` or the
-key already stored in BallonsTranslator.
+IwannaseeManga **auto-detects BallonsTranslator** (home folder, Desktop, Documents,
+Downloads, Program Files, and every drive root — then remembers where it found it).
+If it still can't find yours, set `IWSM_BT_DIR` to its path or pass `--bt-dir`. API
+key can also come from `ANTHROPIC_API_KEY` or the key already stored in BallonsTranslator.
 
 > **한국어 — 설정.** 위 명령으로 저장소를 클론하고, 예제 파일을 복사한 뒤
 > `config.local.json`에 Anthropic 키를 붙여넣고, 권장 한국어 폰트를 받고,
@@ -150,32 +171,53 @@ key already stored in BallonsTranslator.
 > `--patch-bt` 단계는 처음 번역할 때 자동으로도 실행되므로 건너뛰어도 됩니다 — 동작을
 > 명시적으로 보여주려 적어둔 것뿐입니다.
 >
-> BallonsTranslator가 `~/BallonsTranslator`에 **없다면** `IWSM_BT_DIR` 환경변수에 그
-> 경로를 설정하세요(또는 `--bt-dir` 전달). API 키는 `ANTHROPIC_API_KEY` 환경변수나
-> BallonsTranslator에 이미 저장된 키에서 가져올 수도 있습니다.
+> IwannaseeManga가 **BallonsTranslator 위치를 자동으로 찾습니다**(홈 폴더, 바탕 화면,
+> 문서, 다운로드, Program Files, 모든 드라이브 루트 — 찾은 위치는 기억합니다). 그래도
+> 못 찾으면 `IWSM_BT_DIR` 환경변수에 경로를 설정하거나 `--bt-dir`을 전달하세요. API
+> 키는 `ANTHROPIC_API_KEY` 환경변수나 BallonsTranslator에 이미 저장된 키에서 가져올
+> 수도 있습니다.
 
 ## Usage
 
+### The window (default)
+
+Double-click **`run.bat`** (Windows), or just run it with no input:
+
 ```sh
-python iwannaseemanga.py "path/to/chapter"                 # → path/to/chapter_translated
-python iwannaseemanga.py "chapter01" -o "chapter01_KO"
-python iwannaseemanga.py "chapter01" --style impact        # bold action lettering
-python iwannaseemanga.py "chapter01" --font "Gaegu" --stroke 2 --model claude-opus-4-8
+python iwannaseemanga.py
 ```
 
-On Windows you can also drag a folder onto **`run.bat`**.
+Choose the folder, save location, model and language, then click **번역 시작**.
+Progress streams in the window; when it's done, only the translated images remain.
 
-> **한국어 — 사용법.** 위처럼 폴더 경로를 넘기면 됩니다(기본 출력은
-> `<입력>_translated`). `-o`로 출력 폴더, `--style`로 룩 프리셋, `--font`/`--stroke`/
-> `--model` 등으로 세부 설정을 지정할 수 있습니다. Windows에서는 폴더를 **`run.bat`**
-> 위로 드래그해도 됩니다.
+### Command line
+
+```sh
+python iwannaseemanga.py "path/to/chapter"                     # → path/to/chapter_translated (Japanese by default)
+python iwannaseemanga.py "path/to/chapter" --language English  # English source
+python iwannaseemanga.py "path/to/page.jpg"                    # a single image → path/to/page_translated/
+python iwannaseemanga.py "chapter01" -o "chapter01_KO" --model claude-opus-4-8
+python iwannaseemanga.py "chapter01" --style impact            # bold action lettering
+```
+
+Dragging a folder **or a single image** onto **`run.bat`** translates it directly
+(no window). Add `--no-gui` to force command-line behaviour in scripts.
+
+> **한국어 — 사용법.** 입력 없이 실행하거나 **`run.bat`**을 더블클릭하면 **창**이 열립니다:
+> 폴더·저장 위치·모델·언어를 고르고 **번역 시작**을 누르면 됩니다. 명령줄로 쓰려면 위처럼
+> 폴더(또는 이미지 한 장) 경로를 넘기세요 — 기본은 일본어, `--language English`로 영어
+> 소스, `-o` 출력 폴더, `--style`/`--font`/`--model` 등 세부 설정. Windows에서는 폴더나
+> 이미지 한 장을 **`run.bat`** 위로 드래그하면 창 없이 바로 번역합니다(스크립트에서는
+> `--no-gui`로 창을 끌 수 있음).
 
 ### Options
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `input` | — | folder of manga images |
+| `input` | — | folder of images, or a single image file (omit → open the window) |
 | `-o, --output` | `<input>_translated` | output folder |
+| `--language` | `Japanese` | source language: `Japanese` or `English` (picks the OCR engine) |
+| `--model` | `claude-sonnet-4-6` | `claude-opus-4-8` best, `claude-haiku-4-5` cheapest |
 | `--style` | — | look preset: `comic`, `impact`, `handwriting`, `clean` |
 | `--font` | `Jua` | font family (must be installed; see `--setup-fonts`) |
 | `--font-size` | `24` | base font size |
@@ -183,8 +225,9 @@ On Windows you can also drag a folder onto **`run.bat`**.
 | `--stroke` | `0` | outline width (good for text over art) |
 | `--inpaint-size` | `1536` | erase resolution (higher = cleaner, slower) |
 | `--mask-dilate` | `2` | grow erase mask (raise to remove ghosting) |
-| `--model` | `claude-sonnet-4-6` | `claude-opus-4-8` best, `claude-haiku-4-5` cheapest |
-| `--source`/`--target` | `日本語`/`한국어` | languages (BallonsTranslator names) |
+| `--ocr` | auto (per language) | override OCR engine (`manga_ocr`, `mit48px_ctc`, `mit48px`, …) |
+| `--source`/`--target` | auto / `한국어` | override BallonsTranslator language names |
+| `--gui` / `--no-gui` | — | force / suppress the window |
 | `--setup-fonts` | — | download the recommended free fonts, then exit |
 | `--list-fonts` | — | list installed fonts + presets, then exit |
 | `--patch-bt` | — | apply the BallonsTranslator compatibility patches, then exit (auto-applied on first run) |
@@ -192,8 +235,10 @@ On Windows you can also drag a folder onto **`run.bat`**.
 | `--keep-intermediate` | off | keep scratch & logs (debugging) |
 
 > **한국어 — 옵션 설명.**
-> - `input` — 만화 이미지가 든 폴더
+> - `input` — 이미지가 든 폴더 또는 이미지 한 장 (생략하면 창이 열림)
 > - `-o, --output` — 출력 폴더 (기본값 `<입력>_translated`)
+> - `--language` — 소스 언어: `Japanese` 또는 `English` (OCR 엔진을 자동 선택)
+> - `--model` — `claude-opus-4-8` 최고 품질, `claude-haiku-4-5` 최저 비용
 > - `--style` — 룩 프리셋: `comic`, `impact`, `handwriting`, `clean`
 > - `--font` — 폰트 패밀리 (설치되어 있어야 함; `--setup-fonts` 참고)
 > - `--font-size` — 기본 글자 크기
@@ -201,8 +246,9 @@ On Windows you can also drag a folder onto **`run.bat`**.
 > - `--stroke` — 외곽선 두께 (그림 위 텍스트에 유용)
 > - `--inpaint-size` — 지우기 해상도 (높을수록 깨끗·느림)
 > - `--mask-dilate` — 지우기 마스크 확장 (잔상 제거 시 값을 올림)
-> - `--model` — `claude-opus-4-8` 최고 품질, `claude-haiku-4-5` 최저 비용
-> - `--source`/`--target` — 언어 (BallonsTranslator 명칭)
+> - `--ocr` — OCR 엔진 수동 지정 (`manga_ocr`, `mit48px_ctc`, `mit48px` 등)
+> - `--source`/`--target` — 언어 명칭 직접 지정 (BallonsTranslator 명칭)
+> - `--gui` / `--no-gui` — 창 강제로 켜기 / 끄기
 > - `--setup-fonts` — 권장 무료 폰트 다운로드 후 종료
 > - `--list-fonts` — 설치된 폰트 + 프리셋 목록 출력 후 종료
 > - `--patch-bt` — BallonsTranslator 호환성 패치 적용 후 종료 (첫 실행 시 자동 적용)
@@ -212,13 +258,14 @@ On Windows you can also drag a folder onto **`run.bat`**.
 ## Post-processing — set once in `settings.json`
 
 Everything about the lettering and erasure lives in **`settings.json`** next to the
-script. Set it once and every run (one double-click of `run.bat`) applies it; CLI
-flags and `--style` override it per run.
+script. Set it once and every run applies it; the window, CLI flags and `--style`
+override it per run.
 
 ```jsonc
 {
   "model": "claude-sonnet-4-6",
-  "source": "日本語", "target": "한국어",
+  "language": "Japanese",       // default source: "Japanese" (manga_ocr) or "English" (mit48px_ctc)
+  "target": "한국어",
   "typeset": {
     "font_family": "Jua",       // any installed font
     "font_size": 24,
