@@ -524,15 +524,19 @@ def list_fonts(bt_dir: Path) -> int:
 
 # --- BallonsTranslator compatibility patches --------------------------------
 # IwannaseeManga drives BallonsTranslator headlessly against Anthropic's API.
-# Two upstream behaviours break that out of the box, so we patch the user's BT
+# Several upstream behaviours break that out of the box, so we patch the user's BT
 # checkout idempotently (on first run, or via --patch-bt) to make a fresh install
-# "just work":
-#   1. trans_chatgpt.py sends both `temperature` and `top_p`. Anthropic's
+# "just work". Patches auto-skip files that a given BT version doesn't ship, so
+# both the older `trans_chatgpt.py` and the current `trans_llm.py` are covered:
+#   1. The LLM translator sends both `temperature` and `top_p`. Anthropic's
 #      OpenAI-compatible endpoint rejects that combination, and Opus models reject
 #      both -> the API errors out and you get blank translations.
-#   2. mainwindow.py blocks on input() at the end of a headless batch, so the run
+#   2. The same translator sends `response_format={"type":"json_object"}`, which
+#      Anthropic rejects; it only accepts the `json_schema` form, and that schema
+#      must set `additionalProperties: false` on every object (strict mode).
+#   3. mainwindow.py blocks on input() at the end of a headless batch, so the run
 #      never exits; and a piped "exit" can carry a UTF-8 BOM that hides it.
-# Both edits are minimal and being contributed upstream. Revert any time with:
+# All edits are minimal and being contributed upstream. Revert any time with:
 #   git -C <BallonsTranslator> checkout -- <file>
 BT_PATCHES = [
     {
@@ -556,6 +560,80 @@ BT_PATCHES = [
             "        # together, and Opus models reject both; send at most temperature for non-Opus.\n"
             "        if 'opus' not in model.lower():\n"
             "            func_args['temperature'] = self.temperature\n"
+        ),
+    },
+    {
+        "name": "trans_llm.py: don't send temperature+top_p to Anthropic",
+        "relpath": "ballontranslator/modules/translators/trans_llm.py",
+        "marker": "Anthropic rejects temperature+top_p together",
+        "old": (
+            "        api_args = {\n"
+            "            \"model\": model,\n"
+            "            \"messages\": messages,\n"
+            "            \"temperature\": float(profile.temperature),\n"
+            "            \"top_p\": float(profile.top_p),\n"
+            "        }\n"
+        ),
+        "new": (
+            "        api_args = {\n"
+            "            \"model\": model,\n"
+            "            \"messages\": messages,\n"
+            "            \"temperature\": float(profile.temperature),\n"
+            "            # Anthropic rejects temperature+top_p together; send temperature only.\n"
+            "        }\n"
+        ),
+    },
+    {
+        "name": "trans_llm.py: always request the json_schema response_format",
+        "relpath": "ballontranslator/modules/translators/trans_llm.py",
+        "marker": "response_format.type == \"json_schema\" (it rejects",
+        "old": (
+            "        if profile.json_schema_response_format:\n"
+            "            api_args[\"response_format\"] = {\n"
+            "                \"type\": \"json_schema\",\n"
+            "                \"json_schema\": {\n"
+            "                    \"name\": \"translation_response\",\n"
+            "                    \"strict\": True,\n"
+            "                    \"schema\": self._json_schema(),\n"
+            "                },\n"
+            "            }\n"
+            "        else:\n"
+            "            api_args[\"response_format\"] = {\"type\": \"json_object\"}\n"
+        ),
+        "new": (
+            "        # Anthropic's OpenAI-compatible endpoint only accepts\n"
+            "        # response_format.type == \"json_schema\" (it rejects \"json_object\").\n"
+            "        api_args[\"response_format\"] = {\n"
+            "            \"type\": \"json_schema\",\n"
+            "            \"json_schema\": {\n"
+            "                \"name\": \"translation_response\",\n"
+            "                \"strict\": True,\n"
+            "                \"schema\": self._json_schema(),\n"
+            "            },\n"
+            "        }\n"
+        ),
+    },
+    {
+        "name": "trans_llm.py: additionalProperties:false for strict json_schema",
+        "relpath": "ballontranslator/modules/translators/trans_llm.py",
+        "marker": "\"additionalProperties\": False",
+        "old": (
+            "                        \"required\": [\"id\", \"translation\"],\n"
+            "                    },\n"
+            "                }\n"
+            "            },\n"
+            "            \"required\": [\"translations\"],\n"
+            "        }\n"
+        ),
+        "new": (
+            "                        \"required\": [\"id\", \"translation\"],\n"
+            "                        \"additionalProperties\": False,\n"
+            "                    },\n"
+            "                }\n"
+            "            },\n"
+            "            \"required\": [\"translations\"],\n"
+            "            \"additionalProperties\": False,\n"
+            "        }\n"
         ),
     },
     {
@@ -591,7 +669,9 @@ def ensure_bt_patched(bt_dir: Path, verbose: bool = False):
     for p in BT_PATCHES:
         target = bt_dir / p["relpath"]
         if not target.exists():
-            problems.append(f"{p['name']} — file not found: {target}")
+            # Different BallonsTranslator versions ship different translator files
+            # (e.g. trans_chatgpt.py vs trans_llm.py); a missing target just means
+            # this particular patch doesn't apply to this version — skip quietly.
             continue
         with open(target, "r", encoding="utf-8", newline="") as f:
             raw = f.read()
@@ -650,12 +730,19 @@ def run_translation(bt_dir: Path, py: Path, images: list[Path], out_dir: Path,
     result_dir = proj / "result"
     results = sorted(result_dir.glob("*")) if result_dir.is_dir() else []
 
-    if rc != 0 or not results:
-        log(f"BallonsTranslator exited with code {rc} after {dt:.0f}s; results found: {len(results)}")
+    if not results:
+        log(f"BallonsTranslator exited with code {rc} after {dt:.0f}s; results found: 0")
         log("scratch kept for inspection (cleanup skipped). Last log lines:")
         log(tail(run_log))
         log(f"scratch: {work}")
         return 1, f"실패 (exit {rc}). 로그 위치: {work}"
+
+    # BallonsTranslator can crash on shutdown on Windows (exit code 0xC0000409)
+    # AFTER the pages are fully rendered. If the result images exist, the run
+    # succeeded; treat a non-zero exit as a benign shutdown quirk and continue.
+    if rc != 0:
+        log(f"note: BallonsTranslator exited with code {rc} after {dt:.0f}s, but "
+            f"{len(results)} result(s) were produced (benign shutdown crash); continuing.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for r in results:
