@@ -565,7 +565,7 @@ BT_PATCHES = [
     {
         "name": "trans_llm.py: don't send temperature+top_p to Anthropic",
         "relpath": "ballontranslator/modules/translators/trans_llm.py",
-        "marker": "Anthropic rejects temperature+top_p together",
+        "marker": "omit temperature entirely for Opus",
         "old": (
             "        api_args = {\n"
             "            \"model\": model,\n"
@@ -578,9 +578,12 @@ BT_PATCHES = [
             "        api_args = {\n"
             "            \"model\": model,\n"
             "            \"messages\": messages,\n"
-            "            \"temperature\": float(profile.temperature),\n"
-            "            # Anthropic rejects temperature+top_p together; send temperature only.\n"
             "        }\n"
+            "        # Anthropic rejects temperature+top_p together; send temperature only.\n"
+            "        # Opus models additionally reject a non-default temperature (\"temperature is\n"
+            "        # deprecated for this model\"), so omit temperature entirely for Opus.\n"
+            "        if 'opus' not in model.lower():\n"
+            "            api_args[\"temperature\"] = float(profile.temperature)\n"
         ),
     },
     {
